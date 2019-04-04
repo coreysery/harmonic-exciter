@@ -9,6 +9,8 @@
  */
 
 #include <complex.h>
+#include <map>
+
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
@@ -179,38 +181,53 @@ void HarmonicExciterAudioProcessor::processBlock (AudioSampleBuffer& buffer, Mid
     float* freqData = bufCopy->getWritePointer(channel);
     
 
-    //    // Get frequencies from buffer copy
+    // Get frequencies from buffer copy
     fft->performRealOnlyForwardTransform(freqData, true);
-    
-    //    // Find fundamental Freq
-    int freqCap = 10000;
-    int freqBlockSize = (sampFreq / 2) / bufferSize;
-    int cutoffIndex = freqCap / freqBlockSize;
-    
+
+    // Find fundamental Freq
+//    int freqCap = 1000;
+    float freqBlockSize = (sampFreq / 2) / bufferSize;
+//    int cutoffIndex = freqCap / freqBlockSize;
 
     int loudestSamp = 0;
     float loudestMag = 0.0;
-    
-    for (int s = 0; s < cutoffIndex; s++) {
+
+    for (int s = 0; s < bufferSize; s++) {
       std::complex<float>* c = reinterpret_cast<std::complex<float>*>(freqData) + s;
       
       float amp = sqrt(square(c->real()) + square(c->imag()));
-      
+     
       if (loudestMag < amp) {
         loudestMag = amp;
         loudestSamp = s;
       }
     }
     
+
+    int fundamentalFreq = loudestSamp * freqBlockSize * 2;
     
-    int fundamentalFreq = loudestSamp * freqBlockSize;
-    if (fundamentalFreq != 0) {
-      currentFundamental = fundamentalFreq;
-      currentFundamentalIndex = loudestSamp;
+    // shift frequency elements over to fit new frequency
+    for (int i = sizeof(frequencyHistory) - 2; i > 0; i--)
+      frequencyHistory[i] = frequencyHistory[i-1];
+    
+    frequencyHistory[0] = fundamentalFreq;
+    
+
+    int carryingFreq = HarmonicExciterAudioProcessor::getHighestOccuringFrequnecy();
+    
+    if (carryingFreq != 0) {
+      currentFundamental = carryingFreq;
+    }
+    
+    for (int s = 0; s < bufferSize; s++) {
+      int f = s * freqBlockSize;
+      if (f == currentFundamental) {
+        currentFundamentalIndex = s;
+        break;
+      }
     }
     
 
-    
     // If only using fundamental, level all other frequencies
     if (useOnlyFundamental) {
       for (int s = 0; s < currentFundamentalIndex; s++) {
@@ -219,6 +236,7 @@ void HarmonicExciterAudioProcessor::processBlock (AudioSampleBuffer& buffer, Mid
         c->imag(0);
       }
     }
+    
     // level frequencies above fundamental
     for (int s = currentFundamentalIndex + 1; s < bufferSize; s++) {
       std::complex<float>* c = reinterpret_cast<std::complex<float>*>(freqData) + s;
@@ -232,29 +250,45 @@ void HarmonicExciterAudioProcessor::processBlock (AudioSampleBuffer& buffer, Mid
 
 
     // Perform distortion
-    if (*harmonicsCount > 0) {
-      for (int samp = 0; samp < bufferSize; samp++) {
-        float currentSamp = bufCopy->getSample(channel, samp);
+    for (int samp = 0; samp < bufferSize; samp++) {
+      float currentSamp = bufCopy->getSample(channel, samp);
 
-        // rand number between -0.5 and 0.5
-        float r = ((rand() % 1024) / 1024.0f) - 0.5;
-        float harmonic = *harmonicsCount + (r * *harmonicVariance);
+      // number of samples to smooth by on each end
+      int smoothRange = 32;
+      float smoothOffset = 1.0f;
+     
+      int outCount = samp;
+      if (samp > (bufferSize - smoothRange)) {
+        outCount = bufferSize - samp;
+      }
+     
+      if (outCount < smoothRange) {
+        float d = (float)outCount / ((float)smoothRange / 5.0f);
+        smoothOffset = atanf(d);
+      }
 
-        int polarity = currentSamp >= 0 ? 1 : -1;
-        
-        float base = -polarity * -(pow(abs(currentSamp), harmonic) / harmonic);
-        float drive = 10 * std::log((float) *harmonicsCount);
-        float distorted = drive * base;
-
-        bufCopy->setSample(channel, samp, distorted);
+      float distort = 0;
+      for (int h = 1; h <= *harmonicsCount; h += 2) {
+//        float drive = std::log((float) h);
+        distort += (currentSamp - pow(currentSamp, h) / h);
       }
       
-      // Add distorted source
-      const float* distortedSource = bufCopy->getReadPointer(channel);
-      buffer.addFrom(channel, 0, distortedSource, bufferSize);
-      
+      // rand number between -0.5 and 0.5
+      float r = ((rand() % 1024) / 1024.0f) - 0.5;
+      float v = *harmonicVariance / 100.0f;
+
+      int polarity = currentSamp >= 0 ? 1 : -1;
+
+      float distorted = polarity * smoothOffset * distort * (1 + (r * v));
+
+      bufCopy->setSample(channel, samp, distorted);
     }
-    
+
+  // Add distorted source
+  const float* distortedSource = bufCopy->getReadPointer(channel);
+  buffer.addFrom(channel, 0, distortedSource, bufferSize);
+      
+
   }
   
   // Add gain gradually
@@ -304,6 +338,25 @@ void HarmonicExciterAudioProcessor::setStateInformation (const void* data, int s
     *harmonicVariance = xmlState->getDoubleAttribute("harmonicVariance");
     *useOnlyFundamental = xmlState->getBoolAttribute("useOnlyFundamental");
   }
+}
+
+int HarmonicExciterAudioProcessor::getHighestOccuringFrequnecy()
+{
+  std::map<int, int> mydict = {};
+  int cnt = 0;
+  int freq = 0;
+  
+  for (auto&& item : frequencyHistory) {
+    
+    if (item == 0) continue;
+    
+    mydict[item] = mydict.emplace(item, 0).first->second + 1;
+    if (mydict[item] >= cnt) {
+      std::tie(cnt, freq) = std::tie(mydict[item], item);
+    }
+  }
+  
+  return freq;
 }
 
 //==============================================================================

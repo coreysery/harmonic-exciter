@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <queue>
 #include "../JuceLibraryCode/JuceHeader.h"
 
 
@@ -63,10 +64,14 @@ public:
   AudioParameterFloat* harmonicVariance;
   AudioParameterBool* useOnlyFundamental;
 
+  int currentFundamental = 0;
+  
   
 private:
   //==============================================================================
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HarmonicExciterAudioProcessor)
+  
+  int getHighestOccuringFrequnecy();
   
   int nyquist;
   int order;
@@ -76,8 +81,10 @@ private:
   
   double currentGain = 0;
 //  carry over fundamental
-  int currentFundamental = 0;
   int currentFundamentalIndex = 0;
+  int frequencyCarry = 0;
+  int frequencyHistory [64] = {};
+
 
 };
 

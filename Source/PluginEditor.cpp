@@ -33,7 +33,7 @@ HarmonicExciterAudioProcessorEditor::HarmonicExciterAudioProcessorEditor (Harmon
   harmonicsSlider.setSliderStyle(Slider::LinearBar);
   harmonicsSlider.setBounds(30, 60, 320, 32);
   harmonicsSlider.setTextBoxStyle(Slider::TextBoxBelow, false, 50, 24);
-  harmonicsSlider.setRange(1, 7, 1);
+  harmonicsSlider.setRange(1, 7, 2);
   harmonicsSlider.setValue(3);
   harmonicsSlider.setName("Harmonics");
   addAndMakeVisible(harmonicsSlider);
@@ -43,8 +43,8 @@ HarmonicExciterAudioProcessorEditor::HarmonicExciterAudioProcessorEditor (Harmon
   harmonicVarianceSlider.setSliderStyle(Slider::LinearBar);
   harmonicVarianceSlider.setBounds(30, 130, 320, 32);
   harmonicVarianceSlider.setTextBoxStyle(Slider::TextBoxBelow, false, 50, 24);
-  harmonicVarianceSlider.setRange(0.0, 1.0);
-  harmonicVarianceSlider.setValue(0.1);
+  harmonicVarianceSlider.setRange(0, 100, 1);
+  harmonicVarianceSlider.setValue(0);
   harmonicVarianceSlider.setName("Harmonic Variance");
   addAndMakeVisible(harmonicVarianceSlider);
   
@@ -75,8 +75,14 @@ void HarmonicExciterAudioProcessorEditor::paint (Graphics& g)
 //  Slider Labels
   g.setColour(Colours::slategrey);
   g.setFont(14.0f);
-  g.drawFittedText("Harmonics", 30,40,200,16, Justification::left, 1);
+  g.drawFittedText("Harmonics", 30,40,150,16, Justification::left, 1);
   g.drawFittedText("Harmonic Variance", 30,110,200,16, Justification::left, 1);
+  
+//  if (processor.currentFundamental != 0) {
+//    std::stringstream freqString;
+//    freqString << "on " << processor.currentFundamental << "Hz";
+//    g.drawFittedText(freqString.str(), 94,40,50,16, Justification::left, 1);
+//  }
   
 //  Button Label
   g.drawFittedText("Use Fundamental for Harmonics", 60,185,200,16, Justification::left, 1);
@@ -115,6 +121,8 @@ void HarmonicExciterAudioProcessorEditor::buttonClicked(juce::Button *button) {
 
 void HarmonicExciterAudioProcessorEditor::timerCallback() {
   
+  HarmonicExciterAudioProcessorEditor::repaint(94,40,50,16);
+
   if (gainSlider.getValue() != processor.gain->get()) {
     gainSlider.setValue(processor.gain->get());
   }
